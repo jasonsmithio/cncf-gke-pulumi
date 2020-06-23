@@ -6,6 +6,8 @@ import { config } from "./config";
 import * as utils from "./utils";
 import * as knative from "./knative";
 import * as secrets from "./secrets";
+import * as streaming from "./streaming";
+import * as cicd from "./cicd";
 import * as crypto from "crypto";
 
 const projectName = pulumi.getProject();
@@ -82,6 +84,19 @@ const berglas = new secrets.Berglas("berglas", {
 export const berglasWebhookEndpoint = berglas.endpoint;
 export const k8sBerglasServiceAccountName = berglas.k8sBerglasServiceAccount.metadata.name;
 
+//==============================================================================
+/*
+ * Strimzi Kafka Operator
+ */
+//==============================================================================
+
+// Install Strimzi Operator v0.18.0.
+const strimzi = new streaming.Strimzi("strimzi", {
+    provider,
+}, {dependsOn: [cluster]});
+
+export const kafkaEndpoint = strimzi.bootstrapEndpoint;
+
 //============================================================================== 
 /*
  * Istio and Knative
@@ -104,3 +119,14 @@ const kn = new knative.Knative("knative", {
     eventingNamespace: "knative-eventing",
     provider,
 }, {dependsOn: [cluster, istio]});
+
+//==============================================================================
+/*
+ * Tekton CI/CD
+ */
+//==============================================================================
+
+// Install Tekton Operator v0.13.0.
+const tekton = new cicd.Tekton("tekton", {
+    provider,
+}, {dependsOn: [cluster]});

@@ -1,19 +1,14 @@
 # GKE, Pulumi, and Knative.
-
 Deploys a Kubernetes cluster on GKE and installs the following technologies to
 demo a serverless streaming application.
 
-- [x] GKE - k8s cluster on GCP.
-- [x] [Istio](https://knative.dev/docs/install/installing-istio) - service mesh required by Knative.
-- [x] [Knative Serving](https://github.com/knative/serving) - used to manage the serverless applications.
-- [x] [Knative Eventing](https://github.com/knative/eventing) - used to manage the serverless eventing.
-- [x] [Berglas](https://github.com/GoogleCloudPlatform/berglas) - an open source Key Management System (KMS) tool.
-- [ ] [Strimzi](https://strimzi.io/) - open source Kafka operator.
-
-Optional, but good-to-have:
-
-- [ ] [Harbor](https://goharbor.io/) - container image repository
-- [ ] [Tekton](http://tekton.dev/) - native k8s ci/cd
+- GKE - k8s cluster on GCP.
+- [Istio](https://knative.dev/docs/install/installing-istio) - service mesh required by Knative.
+- [Knative Serving](https://github.com/knative/serving) - used to manage the serverless applications.
+- [Knative Eventing](https://github.com/knative/eventing) - used to manage the serverless eventing.
+- [Berglas](https://github.com/GoogleCloudPlatform/berglas) - an open source Key Management System (KMS) tool.
+- [Strimzi](https://strimzi.io/) - open source Kafka operator.
+- [Tekton](http://tekton.dev/) - native k8s ci/cd
 
 The Pulumi program entrypoint is [index.ts](./index.ts)
 
@@ -119,6 +114,7 @@ Outputs:
     clusterName                 : "cncf-gke-pulumi-3fa1dd0"
     istioDomain                 : "35.230.107.2.xip.io"
     k8sBerglasServiceAccountName: "berglas-0wmpoog6"
+	kafkaEndpoint               : 10.31.245.240
     kubeconfig                  : "[secret]"
 
 Resources:
@@ -373,17 +369,64 @@ Delete the Berglas example.
 kubectl delete -f envserver.yaml -n `pulumi stack output appsNamespaceName`
 ```
 
-### Run an Strimzi example
+### Run a Strimzi example
 
-To be implemented.
+View the Pods are running in the `kafka` namespace
 
-### Run an Harbor example
+```bash
+$ kubectl get pods,svc -n kafka -o wide
+NAME                                                          READY   STATUS    RESTARTS   AGE   IP           NODE                                                  NOMINATED NODE   READINESS GATES
+pod/kafka-cluster-m3hi73ku-entity-operator-789c49c7f6-lfdcv   3/3     Running   0          21h   10.28.1.9    gke-cncf-gke-pulumi-3fa1-default-pool-6b9a2d5f-tkg5   <none>           <none>
+pod/kafka-cluster-m3hi73ku-kafka-0                            2/2     Running   0          21h   10.28.1.8    gke-cncf-gke-pulumi-3fa1-default-pool-6b9a2d5f-tkg5   <none>           <none>
+pod/kafka-cluster-m3hi73ku-zookeeper-0                        1/1     Running   0          21h   10.28.2.13   gke-cncf-gke-pulumi-3fa1-default-pool-6b9a2d5f-8zwn   <none>           <none>
+pod/strimzi-cluster-operator-6c9d899778-dkh2b                 1/1     Running   0          21h   10.28.0.17   gke-cncf-gke-pulumi-3fa1-default-pool-6b9a2d5f-7r9p   <none>           <none>
 
-To be implemented.
+NAME                                              TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE   SELECTOR
+service/kafka-cluster-m3hi73ku-kafka-bootstrap    ClusterIP   10.31.245.240   <none>        9091/TCP,9092/TCP,9093/TCP   21h   strimzi.io/cluster=kafka-cluster-m3hi73ku,strimzi.io/kind=Kafka,strimzi.io/name=kafka-cluster-m3hi73ku-kafka
+service/kafka-cluster-m3hi73ku-kafka-brokers      ClusterIP   None            <none>        9091/TCP,9092/TCP,9093/TCP   21h   strimzi.io/cluster=kafka-cluster-m3hi73ku,strimzi.io/kind=Kafka,strimzi.io/name=kafka-cluster-m3hi73ku-kafka
+service/kafka-cluster-m3hi73ku-zookeeper-client   ClusterIP   10.31.242.114   <none>        2181/TCP                     21h   strimzi.io/cluster=kafka-cluster-m3hi73ku,strimzi.io/kind=Kafka,strimzi.io/name=kafka-cluster-m3hi73ku-zookeeper
+service/kafka-cluster-m3hi73ku-zookeeper-nodes    ClusterIP   None            <none>        2181/TCP,2888/TCP,3888/TCP   21h   strimzi.io/cluster=kafka-cluster-m3hi73ku,strimzi.io/kind=Kafka,strimzi.io/name=kafka-cluster-m3hi73ku-zookeeper
+```
 
-### Run an Tekton example
+Start an example Producer. Once running, in the command prompt type a message e.g. 'hello world'
 
-To be implemented.
+```bash
+kubectl -n kafka run kafka-producer -ti --image=strimzi/kafka:0.18.0-kafka-2.5.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --broker-list `pulumi stack output kafkaEndpoint`:9092 --topic my-topic
+```
+
+Start an example Consumer. Messages from the producer should appear.
+
+```bash
+kubectl -n kafka run kafka-consumer -ti --image=strimzi/kafka:0.18.0-kafka-2.5.0 --rm=true --restart=Never -- bin/kafka-console-consumer.sh --bootstrap-server `pulumi stack output kafkaEndpoint`:9092 --topic my-topic --from-beginning
+```
+
+### Run a Tekton example
+
+```bash
+cat > tekton-pipeline.yaml << EOF
+apiVersion: operator.tekton.dev/v1alpha1
+kind: TektonPipeline
+metadata:
+  name: cluster
+spec:
+  targetNamespace: tekton-pipelines
+EOF
+```
+
+Create the Tektoon Pipeline CustomResource and get it's status.
+
+```bash
+kubectl apply -f tekton-pipeline.yaml
+kubectl get tektonpipelines.operator.tekton.dev
+NAME      STATUS
+cluster   installed
+```
+
+Delete the Pipeline.
+
+```bash
+kubectl delete -f tekton-pipeline.yaml
+```
 
 ## Clean Up
 
